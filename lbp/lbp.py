@@ -112,28 +112,67 @@ class LBP(object):
             self.__enter_password()
             self["#valider"].click()
             
+    def wait(self, condition, timeout=3):
+        t0 = time()
+        while not condition():
+            if time()-t0 > timeout:
+                raise TimeoutError("Timeout while waiting")
+            sleep(0.1)
+            
     def parse_current_contract(self):
         header = self["#form_liste_comptes h2 span"]
         sold_date,sold = [i.text for i in self["#form_liste_comptes div.infos-cpt>span"]]
+        transactions = []
         res = {
             "owner":header[-1].text,
+            "type": header[0].text + " "+ header[1].text,
             'account_id':header[0].text.split(" ")[-1],
             "amount_date": datetime.strptime(sold_date.split(" ")[-1], "%d/%m/%Y"),
             "amount": float(sold.split(" ")[1].replace(",",".")),
+            "transactions":transactions
         }
+        
+        # Parse transactions
+        n_elements = len(self["#mouvementsTable tbody tr.row"])
+        self["#voirHisto"].click()
+        sleep(0.5)
+        self["#voirHisto"].click()
+        self.wait(lambda: len(self["#mouvementsTable tbody tr.row"])>n_elements)
+        for row in self["#mouvementsTable tbody tr.row"]:
+            cols = row.find_elements_by_css_selector("td")
+            transactions.append({
+                "date": datetime.strptime(cols[0].text, "%d/%m/%Y"),
+                "label": cols[1].text,
+                "amount": float(cols[2].text.replace(",",".").replace("€","").replace(" ",""))
+            })
         return res
     
+    def safe_click(self, item, condition):
+        # Re click until the url is not reached
+        while True:
+            item.click()
+            if not condition():
+                sleep(0.1)
+                continue
+            break
     
+    def go_to_contract_menus(self):
+        self["#menuPrincipalNavigation li"][0].click()
             
     def dump_all_data(self):
         # Going to contracts menu
-        self["#menuPrincipalNavigation li"][0].click()
+        self.go_to_contract_menus()
         n_contracts = len(self.contracts_buttons)
         contracts = []
         for contract_index in range(n_contracts):
-            self.contracts_buttons[contract_index].click()
+            self.safe_click(
+                self.contracts_buttons[contract_index],
+                lambda: self["#mouvementsTable"] is not None
+                )
             contracts.append(self.parse_current_contract())
-            raise NotImplementedError()
+            self.go_to_contract_menus()
+            
+        return contracts
 
     @property
     def contracts_buttons(self):
