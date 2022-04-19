@@ -4,3 +4,6 @@ tmp*.py
 *.log
 *.pyc
 __pycache__
+dist
+*.whl
+*.tar*
