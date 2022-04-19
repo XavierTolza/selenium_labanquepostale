@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "lbp"
 version = "0.1.0"
-description = ""
+description = "Selenium based la banque postale client"
 authors = ["Xavier TOLZA <tolza.xavier@gmail.com>"]
 
 [tool.poetry.dependencies]
