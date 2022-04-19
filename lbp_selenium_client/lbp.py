@@ -7,8 +7,8 @@ from selenium.common.exceptions import (ElementNotInteractableException,
                                         StaleElementReferenceException)
 from selenium.webdriver.remote.webdriver import BaseWebDriver
 from selenium.webdriver.common.by import By
-from lbp.constants import digits_base_64
-from lbp.frame_context import FrameContext
+from lbp_selenium_client.constants import digits_base_64
+from lbp_selenium_client.frame_context import FrameContext
 
 
 class LBP(object):
