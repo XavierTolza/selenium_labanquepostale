@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "lbp"
+name = "lbp_selenium_client"
 version = "0.1.0"
 description = "Selenium based la banque postale client"
 authors = ["Xavier TOLZA <tolza.xavier@gmail.com>"]
