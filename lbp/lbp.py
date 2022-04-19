@@ -1,4 +1,3 @@
-from base64 import b64decode
 from datetime import datetime
 from hashlib import sha256
 from time import sleep, time
@@ -7,15 +6,16 @@ from selenium.common.exceptions import (ElementNotInteractableException,
                                         NoSuchElementException,
                                         StaleElementReferenceException)
 from selenium.webdriver.remote.webdriver import BaseWebDriver
-
+from selenium.webdriver.common.by import By
 from lbp.constants import digits_base_64
 from lbp.frame_context import FrameContext
 
 
 class LBP(object):
     base_url = "https://www.labanquepostale.fr"
-    def __init__(self, driver:BaseWebDriver, user_id:str, user_pwd:str, wait_item_timeout=3) -> None:
+    def __init__(self, driver:BaseWebDriver, user_id:str, user_pwd:str, wait_item_timeout=10) -> None:
         self.driver = driver
+        driver.maximize_window()
         self.wait_item_timeout = wait_item_timeout
         self.__login = (user_id, user_pwd)
         
@@ -23,18 +23,26 @@ class LBP(object):
         self.driver.get(self.base_url)
         
     def __getitem__(self, key):
+        return self.get_element(key)
+                
+    def get_element(self, key:str, timeout=None):
+        if timeout is None:
+            timeout=self.wait_item_timeout
         t0 = time()
         while True:
             try:
                 if len(key) and key[0]=="#" and " " not in key:
-                    return self.driver.find_element_by_css_selector(key)
+                    return self.driver.find_element(by=By.CSS_SELECTOR, value=key)
                 else:
-                    res = self.driver.find_elements_by_css_selector(key)
+                    res = self.driver.find_elements(by=By.CSS_SELECTOR, value=key)
                     if len(res)==0:
                         raise NoSuchElementException(key)
                     return res
             except (StaleElementReferenceException, NoSuchElementException) as error:
-                if time()-t0 > self.wait_item_timeout:
+                if timeout==0:
+                    return None
+                
+                if time()-t0 > timeout:
                     raise TimeoutError(f"Timeout while waiting for {key}") from error
                 sleep(0.1)
     
@@ -121,23 +129,25 @@ class LBP(object):
             
     def parse_current_contract(self):
         header = self["#form_liste_comptes h2 span"]
-        sold_date,sold = [i.text for i in self["#form_liste_comptes div.infos-cpt>span"]]
+        amount_date,amount = [i.text for i in self["#form_liste_comptes div.infos-cpt>span"]]
         transactions = []
         res = {
             "owner":header[-1].text,
-            "type": header[0].text + " "+ header[1].text,
+            "type": header[0].text.replace("\n", " ").split(" N°")[0],
             'account_id':header[0].text.split(" ")[-1],
-            "amount_date": datetime.strptime(sold_date.split(" ")[-1], "%d/%m/%Y"),
-            "amount": float(sold.split(" ")[1].replace(",",".")),
+            "amount_date": datetime.strptime(amount_date.split(" ")[-1], "%d/%m/%Y"),
+            "amount": float(amount.split(" ")[1].replace(",",".")),
             "transactions":transactions
         }
         
         # Parse transactions
-        n_elements = len(self["#mouvementsTable tbody tr.row"])
-        self["#voirHisto"].click()
-        sleep(0.5)
-        self["#voirHisto"].click()
-        self.wait(lambda: len(self["#mouvementsTable tbody tr.row"])>n_elements)
+        try:
+            self.safe_click(
+                "#voirHisto",
+                lambda: "e-relev" in self["#voirHisto"].text
+            )
+        except TimeoutError:
+            pass
         for row in self["#mouvementsTable tbody tr.row"]:
             cols = row.find_elements_by_css_selector("td")
             transactions.append({
@@ -147,31 +157,55 @@ class LBP(object):
             })
         return res
     
-    def safe_click(self, item, condition):
+    def safe_click(self, item, condition, retry_interval=1, sleep_interval=0.1):
         # Re click until the url is not reached
         while True:
-            item.click()
-            if not condition():
-                sleep(0.1)
+            last_retry = 0
+            try:
+                if time()- last_retry > retry_interval:
+                    last_retry = time()
+                    if type(item) == str:
+                        self[item].click()
+                    else:
+                        item.click()
+                    
+                if not condition():
+                    sleep(sleep_interval)
+                    continue
+                break
+            
+            except (StaleElementReferenceException, ElementNotInteractableException):
+                sleep(sleep_interval)
                 continue
-            break
     
     def go_to_contract_menus(self):
-        self["#menuPrincipalNavigation li"][0].click()
-            
+        self["#lienMenuTertaire1"].click()
+        
+    def wait_ready(self):
+        while self.driver.execute_script('return document.readyState;') != "complete":
+            sleep(0.1)
+        
     def dump_all_data(self):
-        # Going to contracts menu
-        self.go_to_contract_menus()
-        n_contracts = len(self.contracts_buttons)
         contracts = []
-        for contract_index in range(n_contracts):
+        
+        for menu_index in range(1,3):
+            key=f"#lienMenuTertaire{menu_index}"
+            # Going to contracts menu
             self.safe_click(
-                self.contracts_buttons[contract_index],
-                lambda: self["#mouvementsTable"] is not None
-                )
-            contracts.append(self.parse_current_contract())
-            self.go_to_contract_menus()
+                key,
+                lambda: self.get_element("div.account-data", timeout=0) is not None
+            )
+            n_contracts = len(self.contracts_buttons)
             
+            # Dump accounts
+            for contract_index in range(n_contracts):
+                self.safe_click(
+                    self.contracts_buttons[contract_index],
+                    lambda: self.get_element("#mouvementsTable", timeout=0) is not None
+                    )
+                contracts.append(self.parse_current_contract())
+                self[key].click()
+                
         return contracts
 
     @property
