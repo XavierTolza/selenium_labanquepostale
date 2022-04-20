@@ -136,7 +136,7 @@ class LBP(object):
             "type": header[0].text.replace("\n", " ").split(" N°")[0],
             'account_id':header[0].text.split(" ")[-1],
             "amount_date": datetime.strptime(amount_date.split(" ")[-1], "%d/%m/%Y"),
-            "amount": float(amount.split(" ")[1].replace(",",".")),
+            "amount": float(amount.replace(" ","").replace(",",".")[:-1]),
             "transactions":transactions
         }
         
