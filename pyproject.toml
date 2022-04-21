@@ -1,12 +1,15 @@
 [tool.poetry]
 name = "lbp_selenium_client"
-version = "0.1.3"
+version = "0.2.0"
 description = "Selenium based la banque postale client"
 authors = ["Xavier TOLZA <tolza.xavier@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
 selenium = "^4.1.3"
+Pillow = "^9.1.0"
+numpy = "^1.22.3"
+iteration-utilities = "^0.11.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"

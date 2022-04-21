@@ -1,7 +1,9 @@
 from datetime import datetime
 from hashlib import sha256
+import io
+import numpy as np
 from time import sleep, time
-
+from PIL import Image
 from selenium.common.exceptions import (ElementNotInteractableException,
                                         NoSuchElementException,
                                         StaleElementReferenceException)
@@ -9,7 +11,7 @@ from selenium.webdriver.remote.webdriver import BaseWebDriver
 from selenium.webdriver.common.by import By
 from lbp_selenium_client.constants import digits_base_64
 from lbp_selenium_client.frame_context import FrameContext
-
+from iteration_utilities import grouper
 
 class LBP(object):
     base_url = "https://www.labanquepostale.fr"
@@ -59,14 +61,19 @@ class LBP(object):
     
     @property
     def digicode_buttons(self):
+        keys = np.array(list(digits_base_64.keys()))
+        values = list(digits_base_64.values())
         while True:
             res = {}
             for i in (self[f"#val_cel_{i}"] for i in range(4*4)):
-                hasher = sha256()
-                hasher.update(i.screenshot_as_png)
-                digest = hasher.hexdigest()[:6]
-                if digest in digits_base_64:
-                    res[digits_base_64[digest]] = i
+                img = Image.open(io.BytesIO(i.screenshot_as_png))
+                img = np.array(img)
+                digest = img.mean()
+                
+                index = np.argmin(np.abs(keys-digest))
+                
+                if (value:=values[index]) is not None:
+                    res[value] = i
             
             if len(res) != 10:
                 sleep(0.1)
@@ -142,18 +149,18 @@ class LBP(object):
         
         # Parse transactions
         try:
+            self.get_element("#voirHisto", 1)
             self.safe_click(
                 "#voirHisto",
-                lambda: "e-relev" in self["#voirHisto"].text
+                lambda: "e-relev" in self.get_element("#voirHisto", 0).text
             )
         except TimeoutError:
             pass
-        for row in self["#mouvementsTable tbody tr.row"]:
-            cols = row.find_elements_by_css_selector("td")
+        for cols in grouper((i.text for i in self["#mouvementsTable tbody tr.row td"]),4):
             transactions.append({
-                "date": datetime.strptime(cols[0].text, "%d/%m/%Y"),
-                "label": cols[1].text,
-                "amount": float(cols[2].text.replace(",",".").replace("€","").replace(" ",""))
+                "date": datetime.strptime(cols[0], "%d/%m/%Y"),
+                "label": cols[1],
+                "amount": float(cols[2].replace(",",".").replace("€","").replace(" ",""))
             })
         return res
     
