@@ -1,24 +1,29 @@
+import io
 from datetime import datetime
 from hashlib import sha256
-import io
-import numpy as np
 from time import sleep, time
+
+import numpy as np
+from iteration_utilities import grouper
 from PIL import Image
 from selenium.common.exceptions import (ElementNotInteractableException,
                                         NoSuchElementException,
                                         StaleElementReferenceException)
-from selenium.webdriver.remote.webdriver import BaseWebDriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webdriver import BaseWebDriver
+
 from lbp_selenium_client.constants import digits_base_64
 from lbp_selenium_client.frame_context import FrameContext
-from iteration_utilities import grouper
+
 
 class LBP(object):
     base_url = "https://www.labanquepostale.fr"
-    def __init__(self, driver:BaseWebDriver, user_id:str, user_pwd:str, wait_item_timeout=10) -> None:
+    def __init__(self, driver:BaseWebDriver, user_id:str, user_pwd:str, 
+                 wait_item_timeout=10, wait_click_timeout=15) -> None:
         self.driver = driver
         driver.maximize_window()
         self.wait_item_timeout = wait_item_timeout
+        self.wait_click_timeout = wait_click_timeout
         self.__login = (user_id, user_pwd)
         
     def get_home(self) -> None:
@@ -85,14 +90,20 @@ class LBP(object):
         for char in map(int,str(self.__login[1])):
             buttons[char].click()
     
-    def send_keys_secure(self, item, keys:str, timeout:float=3) -> None:
+    def send_keys_secure(self, item, keys:str, timeout:float=None) -> None:
         """
         Send keys to the item provided and retry if the item is not interractable
         """
+        if timeout is None:
+            timeout = self.wait_click_timeout
+            
         t0 = time()
         while True:
             try:
-                item.send_keys(keys)
+                if isinstance(item, str):
+                    self[item].send_keys(keys)
+                else:
+                    item.send_keys(keys)
                 break
             except (StaleElementReferenceException, ElementNotInteractableException) as error:
                 if time()-t0 > timeout:
@@ -121,8 +132,7 @@ class LBP(object):
         
         # Enter login
         with self.frame_context(connexion_iframe):
-            user_field = self["#val_cel_identifiant"]
-            self.send_keys_secure(user_field, self.__login[0])
+            self.send_keys_secure("#val_cel_identifiant", self.__login[0])
             # Enter password
             self.__enter_password()
             self["#valider"].click()
