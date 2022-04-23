@@ -19,14 +19,37 @@ from lbp_selenium_client.frame_context import FrameContext
 class LBP(object):
     base_url = "https://www.labanquepostale.fr"
     def __init__(self, driver:BaseWebDriver, user_id:str, user_pwd:str, 
-                 wait_item_timeout=10, wait_click_timeout=15) -> None:
+                 wait_item_timeout=10, wait_click_timeout=15, logger=None) -> None:
         self.driver = driver
         driver.maximize_window()
+        self.logger = logger
         self.wait_item_timeout = wait_item_timeout
         self.wait_click_timeout = wait_click_timeout
         self.__login = (user_id, user_pwd)
         
+    def debug(self, msg):
+        """
+        If the logger exists, log the message
+        
+        :param msg: The message to be logged
+        """
+        if self.logger:
+            self.logger.debug(msg)
+            
+    def info(self, msg):
+        if self.logger:
+            self.logger.info(msg)
+            
+    def warning(self, msg):
+        if self.logger:
+            self.logger.warning(msg)
+            
+    def error(self, msg):
+        if self.logger:
+            self.logger.error(msg)
+        
     def get_home(self) -> None:
+        self.debug("Getting home")
         self.driver.get(self.base_url)
         
     def __getitem__(self, key):
@@ -36,6 +59,7 @@ class LBP(object):
         if timeout is None:
             timeout=self.wait_item_timeout
         t0 = time()
+        message_displayed=False
         while True:
             try:
                 if len(key) and key[0]=="#" and " " not in key:
@@ -51,6 +75,9 @@ class LBP(object):
                 
                 if time()-t0 > timeout:
                     raise TimeoutError(f"Timeout while waiting for {key}") from error
+                if not message_displayed:
+                    self.debug(f"Waiting for {key}")
+                    message_displayed=True
                 sleep(0.1)
     
     def frame_context(self, frame_id:str) -> FrameContext:
@@ -86,6 +113,7 @@ class LBP(object):
             return res
             
     def __enter_password(self) -> None:
+        self.debug("Entering password")
         buttons = self.digicode_buttons
         for char in map(int,str(self.__login[1])):
             buttons[char].click()
@@ -111,15 +139,19 @@ class LBP(object):
                 sleep(0.1)
         
     def login(self) -> None:
+        self.info("Logging in")
         self.get_home()
         # Accept cookies if needed
         if element := self['#footer_tc_privacy_button_2']:
+            self.debug("Accepting cookies")
             element.click()
         if self.connected:
+            self.debug("Already connected")
             return # Nothing to do
         self.connexion_button.click()
         
         # Wait for login form to pop up
+        self.debug("Waiting for login iframe")
         while True:
             iframes = self["iframe"]
             try:
@@ -132,6 +164,7 @@ class LBP(object):
         
         # Enter login
         with self.frame_context(connexion_iframe):
+            self.debug("Entering login")
             self.send_keys_secure("#val_cel_identifiant", self.__login[0])
             # Enter password
             self.__enter_password()
@@ -139,12 +172,19 @@ class LBP(object):
             
     def wait(self, condition, timeout=3):
         t0 = time()
+        message_printed = False
         while not condition():
             if time()-t0 > timeout:
                 raise TimeoutError("Timeout while waiting")
+            if not message_printed:
+                message_printed=True
+                self.debug(f"Waiting for condition {condition}")
             sleep(0.1)
+        if message_printed:
+            self.debug("Condition met")
             
     def parse_current_contract(self):
+        self.info("Parsing current contract")
         header = self["#form_liste_comptes h2 span"]
         amount_date,amount = [i.text for i in self["#form_liste_comptes div.infos-cpt>span"]]
         transactions = []
@@ -156,16 +196,20 @@ class LBP(object):
             "amount": float(amount.replace(" ","").replace(",",".")[:-1]),
             "transactions":transactions
         }
+        self.debug(f"Current contract is {res['account_id']}")
         
         # Parse transactions
         try:
+            self.debug("Expanding transactions list")
             self.get_element("#voirHisto", 1)
             self.safe_click(
                 "#voirHisto",
                 lambda: "e-relev" in self.get_element("#voirHisto", 0).text
             )
         except TimeoutError:
-            pass
+            self.debug("No transactions list expansion")
+            
+        self.debug("Parsing transactions")
         for cols in grouper((i.text for i in self["#mouvementsTable tbody tr.row td"]),4):
             transactions.append({
                 "date": datetime.strptime(cols[0], "%d/%m/%Y"),
