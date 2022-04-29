@@ -89,6 +89,7 @@ class LBP(object):
 
     @property
     def connexion_button(self):
+        self.debug("Getting connexion button")
         return self["#connect"]
     
     @property
@@ -248,25 +249,25 @@ class LBP(object):
         
     def dump_all_data(self):
         contracts = []
-        
-        for menu_index in range(1,3):
-            key=f"#lienMenuTertaire{menu_index}"
+        def on_main_menu(): 
+            return self.get_element("div.account-data", timeout=0) is not None
+
+        for menu_index in range(1, 3):
+            key = f"#lienMenuTertaire{menu_index}"
             # Going to contracts menu
-            self.safe_click(
-                key,
-                lambda: self.get_element("div.account-data", timeout=0) is not None
-            )
+            self.safe_click(key, on_main_menu)
             n_contracts = len(self.contracts_buttons)
-            
+
             # Dump accounts
             for contract_index in range(n_contracts):
                 self.safe_click(
                     self.contracts_buttons[contract_index],
-                    lambda: self.get_element("#mouvementsTable", timeout=0) is not None
-                    )
+                    lambda: self.get_element(
+                        "#mouvementsTable", timeout=0) is not None
+                )
                 contracts.append(self.parse_current_contract())
-                self[key].click()
-                
+                self.safe_click(key, on_main_menu)
+
         return contracts
 
     @property
