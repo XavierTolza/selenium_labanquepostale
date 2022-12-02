@@ -12,7 +12,7 @@ from selenium.common.exceptions import (ElementNotInteractableException,
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import BaseWebDriver
 
-from lbp_selenium_client.constants import digits_base_64
+from lbp_selenium_client.data import buttons as buttons_reference
 from lbp_selenium_client.frame_context import FrameContext
 
 
@@ -93,25 +93,21 @@ class LBP(object):
         return self["#connect"]
     
     @property
-    def digicode_buttons(self):
-        keys = np.array(list(digits_base_64.keys()))
-        values = list(digits_base_64.values())
-        while True:
-            res = {}
-            for i in (self[f"#val_cel_{i}"] for i in range(4*4)):
-                img = Image.open(io.BytesIO(i.screenshot_as_png))
-                img = np.array(img)
-                digest = img.mean()
-                
-                index = np.argmin(np.abs(keys-digest))
-                
-                if (value:=values[index]) is not None:
-                    res[value] = i
+    def digicode_buttons(self,threshold:float=1e-6):
+        buttons_selenium = [self[f"#val_cel_{i}"] for i in range(4*4)]
+        buttons = np.array([np.array(Image.open(io.BytesIO(i.screenshot_as_png))) for i in buttons_selenium])
+        dist = np.linalg.norm(buttons[:,None]-buttons_reference[None],axis=(2,3,4))
+        min = np.min(dist,axis=1)
+        is_valid = min<threshold
+        if is_valid.sum()<10:
+            raise ValueError("Cannot find the digits")
+        argmin = np.argmin(dist[is_valid],axis=1)
+        raise NotImplementedError
+        
+        
+        
+        
             
-            if len(res) != 10:
-                sleep(0.1)
-                continue
-            return res
             
     def __enter_password(self) -> None:
         self.debug("Entering password")
